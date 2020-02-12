@@ -65,6 +65,7 @@ fileprivate func > <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
 open class MZDownloadManager: NSObject {
     
     fileprivate var sessionManager: URLSession!
+    fileprivate var debugLogsEnabled = false
     
     fileprivate var backgroundSessionCompletionHandler: (() -> Void)?
     
@@ -100,6 +101,12 @@ open class MZDownloadManager: NSObject {
 
 extension MZDownloadManager {
     
+    fileprivate func log(_ log: String) {
+        if !self.debugLogsEnabled { return }
+        
+        debugPrint(log)
+    }
+    
     fileprivate func downloadTasks() -> [URLSessionDownloadTask] {
         var tasks: [URLSessionDownloadTask] = []
         let semaphore : DispatchSemaphore = DispatchSemaphore(value: 0)
@@ -110,7 +117,7 @@ extension MZDownloadManager {
         
         let _ = semaphore.wait(timeout: DispatchTime.distantFuture)
         
-        debugPrint("MZDownloadManager: pending tasks \(tasks)")
+        self.log("MZDownloadManager: pending tasks \(tasks)")
         
         return tasks
     }
@@ -155,6 +162,7 @@ extension MZDownloadManager {
 extension MZDownloadManager: URLSessionDownloadDelegate {
     
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        
         for (index, downloadModel) in self.downloadingArray.enumerated() {
             if downloadTask.isEqual(downloadModel.task) {
                 DispatchQueue.main.async(execute: { () -> Void in
@@ -214,12 +222,13 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                 //If all set just move downloaded file to the destination
                 if fileManager.fileExists(atPath: basePath) {
                     let fileURL = URL(fileURLWithPath: destinationPath as String)
-                    debugPrint("directory path = \(destinationPath)")
+                    
+                    self.log("directory path = \(destinationPath)")
                     
                     do {
                         try fileManager.moveItem(at: location, to: fileURL)
                     } catch let error as NSError {
-                        debugPrint("Error while moving downloaded file to destination path:\(error)")
+                        self.log("Error while moving downloaded file to destination path:\(error)")
                         DispatchQueue.main.async(execute: { () -> Void in
                             self.delegate?.downloadRequestDidFailedWithError?(error, downloadModel: downloadModel, index: index)
                         })
@@ -244,7 +253,7 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
     }
     
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        debugPrint("task id: \(task.taskIdentifier)")
+        self.log("task id: \(task.taskIdentifier)")
         /***** Any interrupted tasks due to any reason will be populated in failed state after init *****/
         
         DispatchQueue.main.async {
@@ -328,13 +337,25 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                 backgroundCompletion()
             })
         }
-        debugPrint("All tasks are finished")
+        self.log("All tasks are finished")
     }
 }
 
 //MARK: Public Helper Functions
 
 extension MZDownloadManager {
+    
+    @objc public func enableDebugLogs(_ enable: Bool) {
+        self.debugLogsEnabled = enable
+    }
+    
+    @objc public func resumeDelegateNotifications() {
+        self.sessionManager?.getAllTasks { tasks in
+            for task in tasks {
+                task.resume()
+            }
+        }
+    }
     
     @objc public func addDownloadTask(_ fileName: String, request: URLRequest, destinationPath: String) {
         
@@ -345,7 +366,7 @@ extension MZDownloadManager {
         downloadTask.taskDescription = [fileName, fileURL, destinationPath].joined(separator: ",")
         downloadTask.resume()
         
-        debugPrint("session manager:\(String(describing: sessionManager)) url:\(String(describing: url)) request:\(String(describing: request))")
+        self.log("session manager:\(String(describing: sessionManager)) url:\(String(describing: url)) request:\(String(describing: request))")
         
         let downloadModel = MZDownloadModel.init(fileName: fileName, fileURL: fileURL, destinationPath: destinationPath)
         downloadModel.startTime = Date()
