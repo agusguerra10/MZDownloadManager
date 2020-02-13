@@ -171,18 +171,12 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     let totalBytesCount = Double(downloadTask.countOfBytesExpectedToReceive)
                     let progress = Float(receivedBytesCount / totalBytesCount)
                     
-                    let taskStartedDate = downloadModel.startTime ?? Date()
-                    let timeInterval = taskStartedDate.timeIntervalSinceNow
-                    let downloadTime = TimeInterval(-1 * timeInterval)
+                    guard let lastUpdateTime = downloadModel.lastUpdateTime else {
+                        downloadModel.lastUpdateTime = Date()
+                        return
+                    }
                     
-                    let speed = Float(totalBytesWritten) / Float(downloadTime)
-                    
-                    let remainingContentLength = totalBytesExpectedToWrite - totalBytesWritten
-                    
-                    let remainingTime = remainingContentLength / Int64(speed)
-                    let hours = Int(remainingTime) / 3600
-                    let minutes = (Int(remainingTime) - hours * 3600) / 60
-                    let seconds = Int(remainingTime) - hours * 3600 - minutes * 60
+                    let timeIntervalSinceLastUpdate = TimeInterval(abs(lastUpdateTime.timeIntervalSinceNow))
                     
                     let totalFileSize = MZUtility.calculateFileSizeInUnit(totalBytesExpectedToWrite)
                     let totalFileSizeUnit = MZUtility.calculateUnit(totalBytesExpectedToWrite)
@@ -190,13 +184,30 @@ extension MZDownloadManager: URLSessionDownloadDelegate {
                     let downloadedFileSize = MZUtility.calculateFileSizeInUnit(totalBytesWritten)
                     let downloadedSizeUnit = MZUtility.calculateUnit(totalBytesWritten)
                     
-                    let speedSize = MZUtility.calculateFileSizeInUnit(Int64(speed))
-                    let speedUnit = MZUtility.calculateUnit(Int64(speed))
+                    downloadModel.bytesWrittenSinceLastUpdate += bytesWritten
+                    if (timeIntervalSinceLastUpdate >= 1) {
+                        let speed = Float(downloadModel.bytesWrittenSinceLastUpdate) / Float(timeIntervalSinceLastUpdate)
+                        
+                        let remainingContentLength = totalBytesExpectedToWrite - totalBytesWritten
+                        let remainingTime = remainingContentLength / Int64(speed)
+                        
+                        downloadModel.lastUpdateTime = Date()
+                        downloadModel.bytesWrittenSinceLastUpdate = 0
+                        
+                        let hours = Int(remainingTime) / 3600
+                        let minutes = (Int(remainingTime) - hours * 3600) / 60
+                        let seconds = Int(remainingTime) - hours * 3600 - minutes * 60
+                        
+                        let speedSize = MZUtility.calculateFileSizeInUnit(Int64(speed))
+                        let speedUnit = MZUtility.calculateUnit(Int64(speed))
+                        
+                        downloadModel.remainingTime = (hours, minutes, seconds)
+                        downloadModel.speed = (speedSize, speedUnit as String)
+                    }
                     
-                    downloadModel.remainingTime = (hours, minutes, seconds)
                     downloadModel.file = (totalFileSize, totalFileSizeUnit as String)
                     downloadModel.downloadedFile = (downloadedFileSize, downloadedSizeUnit as String)
-                    downloadModel.speed = (speedSize, speedUnit as String)
+                    
                     downloadModel.progress = progress
                     
                     if self.downloadingArray.contains(downloadModel), let objectIndex = self.downloadingArray.firstIndex(of: downloadModel) {
